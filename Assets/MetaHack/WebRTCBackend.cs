@@ -15,14 +15,14 @@ public class WebRTCBackend : NetworkBackend {
 
   static Queue _actions = new Queue();
   
-  RTCOfferOptions OfferOptions = new RTCOfferOptions {
+  RTCOfferAnswerOptions OfferOptions = new RTCOfferAnswerOptions {
     iceRestart = false,
-    offerToReceiveAudio = false,
-    offerToReceiveVideo = false
+    voiceActivityDetection = false
   };
 
-  RTCAnswerOptions AnswerOptions = new RTCAnswerOptions {
+  RTCOfferAnswerOptions AnswerOptions = new RTCOfferAnswerOptions {
     iceRestart = false,
+    voiceActivityDetection = false
   };
   
   RTCConfiguration GetSelectedSdpSemantics() {
@@ -55,15 +55,27 @@ public class WebRTCBackend : NetworkBackend {
     _webSocket.OnError += (sender, args) => Debug.Log(args.Message);
     _webSocket.OnClose += (sender, args) => Debug.Log(args);
     _webSocket.Connect();
+
+    OnConnectionStateChange += (state, userId) => {
+      Debug.Log($"OnConnectionStateChanged {state}");
+      switch (state) {
+        case "connected":
+          OnOpen?.Invoke(userId);
+          break;
+        case "close":
+          OnClose?.Invoke(userId);
+          break;
+      }
+    };
   }
 
   IEnumerator InitConnection(int userId, bool hosting) {
-    Debug.Log("InitConnection");
+    Debug.Log($"InitConnection {userId} {(hosting?"host":"remote")}");
     var configuration = GetSelectedSdpSemantics();
     var co = new RTCPeerConnection(ref configuration);
     _connections[userId] = co;
     co.OnConnectionStateChange += delegate(RTCPeerConnectionState state) {
-      OnConnectionStateChange?.Invoke(state.ToString(), userId);
+      //OnConnectionStateChange?.Invoke(state.ToString(), userId);
       switch (state) {
         case RTCPeerConnectionState.New:
           Debug.Log($"New {userId}");
@@ -72,7 +84,6 @@ public class WebRTCBackend : NetworkBackend {
           Debug.Log($"Connecting {userId}");
           break;
         case RTCPeerConnectionState.Connected:
-          //OnOpen?.Invoke(userId);
           Debug.Log($"Connected {userId}");
           break;
         case RTCPeerConnectionState.Disconnected:
@@ -93,15 +104,18 @@ public class WebRTCBackend : NetworkBackend {
     co.OnIceCandidate += delegate(RTCIceCandidate candidate) {
       SignalSend(new IceCandidateMsg { to=userId, candidate=candidate }); // Send the candidate to the remote peer
     };
-    co.OnIceConnectionChange += state =>  OnIceConnectionChange(state, userId);
+    co.OnNegotiationNeeded += () => {
+      // Send the empty candidate to the remote peer
+      _webSocket.Send("{\"to\":"+userId+",\"candidate\":{\"candidate\": \"\", \"sdpMLineIndex\": 0, \"sdpMid\": \"0\"}}");
+    };
+    co.OnIceConnectionChange += state => OnIceConnectionChange(state, userId);
     if (hosting) { // Create the data channel and establish its event listeners
-      Debug.Log("host");
       RTCDataChannelInit conf = new RTCDataChannelInit();
       
       RTCDataChannel channel = co.CreateDataChannel("sync", conf);
       _channels[userId] = channel;
       channel.OnOpen = () => {
-        OnOpen?.Invoke(userId);
+        //OnOpen?.Invoke(userId);
         OnConnectionStateChange?.Invoke("connected", userId);
       };
       channel.OnMessage = (msg) => ReceiveCallback(msg, userId);
@@ -129,16 +143,19 @@ public class WebRTCBackend : NetworkBackend {
       _connections[userId].OnDataChannel += delegate(RTCDataChannel channel) {
         _channels[userId] = channel;
         channel.OnOpen = () => {
-          OnOpen?.Invoke(userId);
+          //OnOpen?.Invoke(userId);
+          Debug.Log("Added Channel OnOpen");
           OnConnectionStateChange?.Invoke("connected", userId);
         };
-        // FIX OnOpen isn't call when the channel is already opened
-        if (channel.ReadyState == RTCDataChannelState.Open) {
-          OnOpen?.Invoke(userId);
-          OnConnectionStateChange?.Invoke("connected", userId);
-        }
         channel.OnMessage = (msg) => ReceiveCallback(msg, userId);
         channel.OnClose = () => OnConnectionStateChange?.Invoke("close", userId);
+        
+        // FIX OnOpen isn't call when the channel is already opened
+        if (channel.ReadyState == RTCDataChannelState.Open) {
+          //OnOpen?.Invoke(userId);
+          Debug.Log("Channel State OnOpen");
+          OnConnectionStateChange?.Invoke("connected", userId);
+        }
       };
     }
   }
@@ -159,7 +176,6 @@ public class WebRTCBackend : NetworkBackend {
         break;
       case RTCIceConnectionState.Connected:
         Debug.Log($"IceConnectionState: Connected");
-        //_webSocket.Send("{\"to\":"+userId+",\"candidate\":{\"candidate\": \"\", \"sdpMLineIndex\": 0, \"sdpMid\": \"0\"}}"); // Send the empty candidate to the remote peer
         break;
       case RTCIceConnectionState.Disconnected:
         Debug.Log($"IceConnectionState: Disconnected");
@@ -201,7 +217,7 @@ public class WebRTCBackend : NetworkBackend {
   }
   
   IEnumerator OnSignalReceiveCr(object o, MessageEventArgs args) {
-    //Debug.Log(args.Data);
+    Debug.Log(args.Data);
     JObject evt = JObject.Parse(args.Data);
     
     // when a new user is connected to the signalling server
@@ -218,7 +234,9 @@ public class WebRTCBackend : NetworkBackend {
     
         var co = _connections[from];
         if (evt["candidate"] != null) { // candidate exchange
-          if (!string.IsNullOrEmpty(evt["candidate"].Value<string>("candidate"))) {
+          var candidateValue =
+            evt["candidate"].Value<string>("candidate") ?? evt["candidate"].Value<string>("Candidate");
+          if (!string.IsNullOrEmpty(candidateValue)) {
             co.AddIceCandidate(IceCandidateFromJson(evt["candidate"]));
           } else {
             //co.AddIceCandidate(null);
@@ -270,7 +288,7 @@ public class WebRTCBackend : NetworkBackend {
   Dictionary<string, Action<JObject, int>> _listeners = new Dictionary<string, Action<JObject, int>>();
   void ReceiveCallback(byte[] bytes, int userId) {
     string msg = Encoding.UTF8.GetString(bytes, 0, bytes.Length);
-    //Debug.Log(msg);
+    Debug.Log(msg);
     //JObject json = JObject.Parse(msg);
     //json.userID = userId;
 
@@ -301,20 +319,18 @@ public class WebRTCBackend : NetworkBackend {
 
   public override void Send(string message, int? toid = null) {
     if (toid != null) {
-      Debug.Log(_channels.Count);
       if (!_channels.ContainsKey(toid.Value)) {
         // TODO send when I can
         Debug.LogWarning("message sended too early, channel not ready");
         return;
       }
       var channel = _channels[toid.Value];
-      if (channel.ReadyState == RTCDataChannelState.Open) channel.Send(message);
+      channel.Send(message);
       return;
     }
     foreach (var channel in _channels.Values) {
       Debug.Log($"Broadcast {message}");
-      Debug.Log(channel.ReadyState);
-      if (channel.ReadyState == RTCDataChannelState.Open) channel.Send(message);
+      channel.Send(message);
     }
   }
 
@@ -354,13 +370,13 @@ public class WebRTCBackend : NetworkBackend {
   /*
    * {"to":22,"candidate":{"candidate":"candidate:1 1 UDP 2122252543 e75a59e7-0861-4c46-8f2a-93b1648a1159.local 54204 typ host","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"2b8dac69"},"from":19}
    */
-  RTCIceCandidate IceCandidateFromJson([CanBeNull] JToken token) {
-    var candidateInfo = new RTCIceCandidateInit() {
-      candidate = token["candidate"].Value<string>(),
-      sdpMid = token["sdpMid"].Value<string>(),
+  RTCIceCandidate IceCandidateFromJson(JToken token) {
+    var candidateInfo = new RTCIceCandidateInit {
+      candidate = (token["candidate"] ?? token["Candidate"]).Value<string>(),
+      sdpMid = (token["sdpMid"] ?? token["SdpMid"]).Value<string>(),
     };
-    if (token["sdpMLineIndex"] != null) {
-      candidateInfo.sdpMLineIndex = token["sdpMLineIndex"].Value<int>();
+    if (token["sdpMLineIndex"] != null || token["SdpMLineIndex"] != null) {
+      candidateInfo.sdpMLineIndex = (token["sdpMLineIndex"] ?? token["SdpMLineIndex"]).Value<int>();
     }
     return new RTCIceCandidate(candidateInfo);
   }

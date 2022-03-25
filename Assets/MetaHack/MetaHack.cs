@@ -7,20 +7,25 @@ using UnityEngine;
 public class MetaHack : MonoBehaviour {
 
     NetworkBackend _network;
-    
-    void Awake() {
+    [SerializeField] GameObject go;
+    void Start() {
         DontDestroyOnLoad(gameObject);
         
         _network = GetComponent<NetworkBackend>();
         if (_network == null) {
             _network = gameObject.AddComponent<WebRTCBackend>();
         }
-        _network.OnOpen += (userId) => {
-            //Debug.Log("OnOpen");
+        _network.OnOpen += userId => {
+            Debug.Log($"OnOpen {userId}");
             _network.Send("{\"evt\":\"test\", \"str\":\"hello\"}", userId);
         };
-        _network.On("hello", (obj, userId) => {
+        _network.OnClose += userId => {
+            Debug.Log($"OnClose {userId}");
+            go.gameObject.GetComponent<Renderer>().material.color = Color.white;
+        };
+        _network.On("test", (obj, userId) => {
             Debug.Log($"receive hello from {userId}");
+            go.gameObject.GetComponent<Renderer>().material.color = Color.red;
         });
         _network.Init("phone-tracker.glitch.me");
     }
