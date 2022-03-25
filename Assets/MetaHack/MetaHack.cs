@@ -15,8 +15,12 @@ public class MetaHack : MonoBehaviour {
         if (_network == null) {
             _network = gameObject.AddComponent<WebRTCBackend>();
         }
-        _network.OnOpen += userId => {
+        /*_network.OnOpen += userId => {
             Debug.Log($"OnOpen {userId}");
+            _network.Send("{\"evt\":\"test\", \"str\":\"hello\"}", userId);
+        };*/
+        _network.OnReady += userId => {
+            Debug.Log($"OnReady {userId}");
             _network.Send("{\"evt\":\"test\", \"str\":\"hello\"}", userId);
         };
         _network.OnClose += userId => {

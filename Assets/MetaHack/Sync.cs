@@ -53,6 +53,7 @@ public abstract class NetworkBackend : MonoBehaviour {
   public Action<string, int> OnMessage;
   public Action<int> OnError;
   public Action<int> OnOpen;
+  public Action<int> OnReady;
   
   public abstract void Init(string host);
   public abstract void Send(string data, int? toid = null);

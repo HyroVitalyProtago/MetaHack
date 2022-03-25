@@ -42,7 +42,8 @@ public class WebRTCBackend : NetworkBackend {
   Dictionary<int, RTCPeerConnection> _connections = new Dictionary<int, RTCPeerConnection>();
   Dictionary<int, RTCDataChannel> _channels = new Dictionary<int, RTCDataChannel>();
   public Action<string, int> OnConnectionStateChange;
-
+  Dictionary<int, bool> _isReady = new Dictionary<int, bool>();
+  
   public override void Init(string host) {
     Debug.Log("WebRTC Initialize...");
     WebRTC.Initialize();
@@ -67,6 +68,14 @@ public class WebRTCBackend : NetworkBackend {
           break;
       }
     };
+    OnOpen += userId => StartCoroutine(CheckReady(userId));
+  }
+
+  IEnumerator CheckReady(int userId) {
+    while (!_isReady.ContainsKey(userId)) {
+        Send("ready?", userId);
+        yield return new WaitForSecondsRealtime(.1f);
+    }
   }
 
   IEnumerator InitConnection(int userId, bool hosting) {
@@ -102,7 +111,8 @@ public class WebRTCBackend : NetworkBackend {
       }
     };
     co.OnIceCandidate += delegate(RTCIceCandidate candidate) {
-      SignalSend(new IceCandidateMsg { to=userId, candidate=candidate }); // Send the candidate to the remote peer
+      // Send the candidate to the remote peer
+      SignalSend(new IceCandidateMsg { to=userId, candidate=candidate });
     };
     co.OnNegotiationNeeded += () => {
       // Send the empty candidate to the remote peer
@@ -288,10 +298,20 @@ public class WebRTCBackend : NetworkBackend {
   Dictionary<string, Action<JObject, int>> _listeners = new Dictionary<string, Action<JObject, int>>();
   void ReceiveCallback(byte[] bytes, int userId) {
     string msg = Encoding.UTF8.GetString(bytes, 0, bytes.Length);
-    Debug.Log(msg);
+    //Debug.Log(msg);
     //JObject json = JObject.Parse(msg);
     //json.userID = userId;
 
+    if (msg == "ready?") {
+      Send("ready!", userId);
+      return;
+    }
+    if (msg == "ready!") {
+      _isReady.Add(userId, true);
+      OnReady?.Invoke(userId);
+      return;
+    }
+    
     try {
       JObject evt = JObject.Parse(msg);
       if (evt["evt"] != null) {
