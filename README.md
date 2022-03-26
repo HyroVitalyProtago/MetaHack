@@ -51,6 +51,7 @@ For Unity Android platform, you need to configure player settings below.
 
 For others platforms, check https://docs.unity3d.com/Packages/com.unity.webrtc@2.4/manual/install.html
 
+- As a note, it doesn't works on Unity to WebXR export (probably available after the hack)
 - For now, check the repo as an example in unity
 - After the hack, it will available as a unity package
 
