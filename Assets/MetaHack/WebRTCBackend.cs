@@ -306,7 +306,7 @@ public class WebRTCBackend : NetworkBackend {
       return;
     }
     if (msg == "ready!") {
-      _isReady.Add(userId, true);
+      if (!_isReady.ContainsKey(userId)) _isReady.Add(userId, true);
       OnReady?.Invoke(userId);
       return;
     }
@@ -344,12 +344,12 @@ public class WebRTCBackend : NetworkBackend {
         return;
       }
       var channel = _channels[toid.Value];
-      channel.Send(message);
+      if (channel.ReadyState == RTCDataChannelState.Open) channel.Send(message);
       return;
     }
     foreach (var channel in _channels.Values) {
       Log($"Broadcast {message}");
-      channel.Send(message);
+      if (channel.ReadyState == RTCDataChannelState.Open) channel.Send(message);
     }
   }
 
