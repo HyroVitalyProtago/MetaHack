@@ -45,20 +45,22 @@ public class WebRTCBackend : NetworkBackend {
   Dictionary<int, bool> _isReady = new Dictionary<int, bool>();
   
   public override void Init(string host) {
-    Debug.Log("WebRTC Initialize...");
+    Log("WebRTC Initialize...");
     WebRTC.Initialize();
     
     // if youd need ws for development: https://stackoverflow.com/questions/11768221/firefox-websocket-security-issue
     // firefox about:config enable network.websocket.allowInsecureFromHTTPS during insecure devs
     _webSocket = new WebSocket($"wss://{host}/wrtc");
     _webSocket.OnMessage += OnSignalReceive;
-    _webSocket.OnOpen += (sender, args) => Debug.Log(args);
-    _webSocket.OnError += (sender, args) => Debug.Log(args.Message);
-    _webSocket.OnClose += (sender, args) => Debug.Log(args);
+    _webSocket.OnOpen += (sender, args) => Log(args);
+    _webSocket.OnError += (sender, args) => Log(args.Message);
+    _webSocket.OnClose += (sender, args) => {
+      
+    };
     _webSocket.Connect();
 
     OnConnectionStateChange += (state, userId) => {
-      Debug.Log($"OnConnectionStateChanged {state}");
+      Log($"OnConnectionStateChanged {state}");
       switch (state) {
         case "connected":
           OnOpen?.Invoke(userId);
@@ -79,7 +81,7 @@ public class WebRTCBackend : NetworkBackend {
   }
 
   IEnumerator InitConnection(int userId, bool hosting) {
-    Debug.Log($"InitConnection {userId} {(hosting?"host":"remote")}");
+    Log($"InitConnection {userId} {(hosting?"host":"remote")}");
     var configuration = GetSelectedSdpSemantics();
     var co = new RTCPeerConnection(ref configuration);
     _connections[userId] = co;
@@ -87,24 +89,24 @@ public class WebRTCBackend : NetworkBackend {
       //OnConnectionStateChange?.Invoke(state.ToString(), userId);
       switch (state) {
         case RTCPeerConnectionState.New:
-          Debug.Log($"New {userId}");
+          Log($"New {userId}");
           break;
         case RTCPeerConnectionState.Connecting:
-          Debug.Log($"Connecting {userId}");
+          Log($"Connecting {userId}");
           break;
         case RTCPeerConnectionState.Connected:
-          Debug.Log($"Connected {userId}");
+          Log($"Connected {userId}");
           break;
         case RTCPeerConnectionState.Disconnected:
-          Debug.Log($"Disconnected {userId}");
+          Log($"Disconnected {userId}");
           break;
         case RTCPeerConnectionState.Failed:
           OnError?.Invoke(userId);
-          Debug.Log($"Failed {userId}");
+          Log($"Failed {userId}");
           break;
         case RTCPeerConnectionState.Closed:
           OnClose?.Invoke(userId);
-          Debug.Log($"Closed {userId}");
+          Log($"Closed {userId}");
           break;
         default:
           throw new ArgumentOutOfRangeException(nameof(state), state, null);
@@ -125,7 +127,6 @@ public class WebRTCBackend : NetworkBackend {
       RTCDataChannel channel = co.CreateDataChannel("sync", conf);
       _channels[userId] = channel;
       channel.OnOpen = () => {
-        //OnOpen?.Invoke(userId);
         OnConnectionStateChange?.Invoke("connected", userId);
       };
       channel.OnMessage = (msg) => ReceiveCallback(msg, userId);
@@ -138,7 +139,7 @@ public class WebRTCBackend : NetworkBackend {
         var op2 = co.SetLocalDescription(ref desc);
         yield return op2;
         if (!op2.IsError) {
-          Debug.Log($"SetLocalDescription complete");
+          Log($"SetLocalDescription complete");
           SignalSend(new IceHostMsg { to=userId, hostDescription=new RTCSessionDescriptionJson(co.LocalDescription) });
         } else {
           var error = op2.Error;
@@ -153,8 +154,7 @@ public class WebRTCBackend : NetworkBackend {
       _connections[userId].OnDataChannel += delegate(RTCDataChannel channel) {
         _channels[userId] = channel;
         channel.OnOpen = () => {
-          //OnOpen?.Invoke(userId);
-          Debug.Log("Added Channel OnOpen");
+          Log("Added Channel OnOpen");
           OnConnectionStateChange?.Invoke("connected", userId);
         };
         channel.OnMessage = (msg) => ReceiveCallback(msg, userId);
@@ -162,8 +162,7 @@ public class WebRTCBackend : NetworkBackend {
         
         // FIX OnOpen isn't call when the channel is already opened
         if (channel.ReadyState == RTCDataChannelState.Open) {
-          //OnOpen?.Invoke(userId);
-          Debug.Log("Channel State OnOpen");
+          Log("Channel State OnOpen");
           OnConnectionStateChange?.Invoke("connected", userId);
         }
       };
@@ -173,28 +172,28 @@ public class WebRTCBackend : NetworkBackend {
   void OnIceConnectionChange(RTCIceConnectionState state, int userId) {
     switch (state) {
       case RTCIceConnectionState.New:
-        Debug.Log($"IceConnectionState: New");
+        Log($"IceConnectionState: New");
         break;
       case RTCIceConnectionState.Checking:
-        Debug.Log($"IceConnectionState: Checking");
+        Log($"IceConnectionState: Checking");
         break;
       case RTCIceConnectionState.Closed:
-        Debug.Log($"IceConnectionState: Closed");
+        Log($"IceConnectionState: Closed");
         break;
       case RTCIceConnectionState.Completed:
-        Debug.Log($"IceConnectionState: Completed");
+        Log($"IceConnectionState: Completed");
         break;
       case RTCIceConnectionState.Connected:
-        Debug.Log($"IceConnectionState: Connected");
+        Log($"IceConnectionState: Connected");
         break;
       case RTCIceConnectionState.Disconnected:
-        Debug.Log($"IceConnectionState: Disconnected");
+        Log($"IceConnectionState: Disconnected");
         break;
       case RTCIceConnectionState.Failed:
-        Debug.Log($"IceConnectionState: Failed");
+        Log($"IceConnectionState: Failed");
         break;
       case RTCIceConnectionState.Max:
-        Debug.Log($"IceConnectionState: Max");
+        Log($"IceConnectionState: Max");
         break;
       default:
         throw new ArgumentOutOfRangeException(nameof(state), state, null);
@@ -227,7 +226,7 @@ public class WebRTCBackend : NetworkBackend {
   }
   
   IEnumerator OnSignalReceiveCr(object o, MessageEventArgs args) {
-    Debug.Log(args.Data);
+    Log(args.Data);
     JObject evt = JObject.Parse(args.Data);
     
     // when a new user is connected to the signalling server
@@ -250,7 +249,7 @@ public class WebRTCBackend : NetworkBackend {
             co.AddIceCandidate(IceCandidateFromJson(evt["candidate"]));
           } else {
             //co.AddIceCandidate(null);
-            Debug.Log("All candidates have been received");
+            Log("All candidates have been received");
             // https://github.com/Unity-Technologies/com.unity.webrtc/issues/539
             // trickle ICE not supported by unity => call offer after receiving all ice candidate
             HandleAllCandidatesReceived(from);
@@ -349,7 +348,7 @@ public class WebRTCBackend : NetworkBackend {
       return;
     }
     foreach (var channel in _channels.Values) {
-      Debug.Log($"Broadcast {message}");
+      Log($"Broadcast {message}");
       channel.Send(message);
     }
   }
