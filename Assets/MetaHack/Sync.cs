@@ -49,10 +49,17 @@ public class IceRemoteMsg : IceMsg {
 }
 
 public abstract class NetworkBackend : MonoBehaviour {
+  public bool LogEnabled = true;
+  protected void Log(object message) {
+    if (!LogEnabled) return;
+    Debug.Log(message);
+  }
+  
   public Action<int> OnClose;
   public Action<string, int> OnMessage;
   public Action<int> OnError;
   public Action<int> OnOpen;
+  public Action<int> OnReady;
   
   public abstract void Init(string host);
   public abstract void Send(string data, int? toid = null);

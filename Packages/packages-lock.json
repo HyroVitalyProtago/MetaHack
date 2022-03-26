@@ -81,7 +81,7 @@
       }
     },
     "com.unity.webrtc": {
-      "version": "2.3.3-preview",
+      "version": "2.4.0-exp.6",
       "depth": 0,
       "source": "registry",
       "dependencies": {
