@@ -5,6 +5,7 @@ A way to connect Unity and Web app through WebRTC
 
 ## Inspiration
 During the Hacking The Hack remote hackathon, when I was seeing everyone pitching their ideas, I was thinking that it looks like separate apps, interesting, but not so meta...
+![miro](https://user-images.githubusercontent.com/3470988/160245724-cba225c6-38ed-4f22-a94e-2f195b677f03.PNG)
 
 ## What it does
 Enable interoperability between projects through a unity and web compatible library based on WebRTC.
@@ -58,4 +59,4 @@ For others platforms, check https://docs.unity3d.com/Packages/com.unity.webrtc@2
 ## How to setup MetaHack in Web(XR)
 - add `<script type="module" src="https://metahack.glitch.me/metahack.js"></script>` in your html `<head>`
 - use `metahack` in `window.addEventListener("load", () => {});` callback (after the hack, it will also be usable outside of load)
-- you can check https://metahack.glitch.me/ as an example
+- you can check https://metahack.glitch.me/ or https://metahack-demo.glitch.me/ as an example
